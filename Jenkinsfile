@@ -1,16 +1,20 @@
 pipeline {
     agent any
     parameters {
-        choice(name: 'BACKEND_COUNT', choices: ['1', '2'], description: 'Number of backend containers to deploy')
+        choice(
+            name: 'BACKEND_COUNT', 
+            choices: ['1', '2'], 
+            description: 'Number of backend containers to deploy'
+        )
     }
     stages {
         stage('Build Backend Image') {
             steps {
                 sh '''
-                # Go to workspace
+                # Go to backend folder
                 cd $WORKSPACE/backend || exit 1
 
-                # Remove old image if exists
+                # Remove old Docker image if exists
                 docker rmi -f backend-app || true
 
                 # Build Docker image
@@ -24,12 +28,12 @@ pipeline {
                 # Create Docker network if not exists
                 docker network create app-network || true
 
-                # Remove old containers
+                # Remove old backend containers
                 for i in 1 2; do
                     docker rm -f backend$i || true
                 done
 
-                # Deploy backend containers based on parameter
+                # Run backend containers based on parameter
                 for i in $(seq 1 $BACKEND_COUNT); do
                     docker run -d --name backend$i --network app-network backend-app
                 done
@@ -39,21 +43,16 @@ pipeline {
         stage('Deploy NGINX Load Balancer') {
             steps {
                 sh '''
-                # Remove old NGINX
+                # Remove old NGINX container
                 docker rm -f nginx-lb || true
 
-                # Run NGINX
+                # Run NGINX with mounted custom config
                 docker run -d \
                   --name nginx-lb \
                   --network app-network \
                   -p 80:80 \
+                  -v $WORKSPACE/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro \
                   nginx
-
-                # Copy custom config
-                docker cp $WORKSPACE/nginx/default.conf nginx-lb:/etc/nginx/conf.d/default.conf
-
-                # Reload NGINX
-                docker exec nginx-lb nginx -s reload
                 '''
             }
         }
